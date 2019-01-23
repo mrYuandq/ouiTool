@@ -42,8 +42,8 @@ type mapAddress struct {
  * OutsideOrganization: 排除在外的数据
 */
 type OuiDb struct {
-	InsideOrganization []string
-	OutsideOrganization []string
+	ioz []string
+	ooz []string
 
 	Blocks []AddressBlock
 	Maps   map[string]mapAddress
@@ -69,15 +69,15 @@ func (m *OuiDb) Open(file string) *OuiDb {
 /**
  * 设置收录数据
 */
-func (m *OuiDb) SetInsideOriganization(s []string)  {
-	db.InsideOrganization = s
+func (m *OuiDb) SetInsideOrganization(s []string)  {
+	db.ioz = s
 }
 
 /**
  * 排除数据
 */
-func (m *OuiDb) SetOutsideOriganization(s []string)  {
-	db.OutsideOrganization = s
+func (m *OuiDb) SetOutsideOrganization(s []string)  {
+	db.ooz = s
 }
 
 /**
@@ -95,6 +95,7 @@ func (m *OuiDb) load(path string) error {
 	fieldsRe := regexp.MustCompile(`^(\S+)\s+\(base 16\)\s+(.+)?`)
 
 	scanner := bufio.NewScanner(file)
+	F:
 	for scanner.Scan() {
 		text := scanner.Text()
 		if text == "" || text[0] == '#' || text[0] == '\t' || strings.Index(text, "(base 16)") < 0 {
@@ -106,30 +107,34 @@ func (m *OuiDb) load(path string) error {
 		addr := fields[0][1]
 		organization := strings.ToUpper(fields[0][2])
 
-		if m.OutsideOrganization != nil {
-			for i := len(m.OutsideOrganization) - 1; i >= 0; i-- {
-				regS = fmt.Sprintf(`\b%s\b`, m.OutsideOrganization[i])
-				if f, err := regexp.MatchString(regS, organization); f || nil != err {
-					continue
-				}
-			}
+		if m.ooz == nil &&
+			m.ioz == nil {
+			goto add
 		}
 		organization2 = ""
-		if m.InsideOrganization != nil {
-			for i := len(m.InsideOrganization) - 1; i >= 0; i-- {
-				o := m.InsideOrganization[i]
+
+		if m.ooz != nil {
+			for i := len(m.ooz) - 1; i >= 0; i-- {
+				o := m.ooz[i]
 				regS = fmt.Sprintf(`\b%s\b`, o)
-				f, err := regexp.MatchString(regS, organization)
-				if !f || organization == "" || nil != err {
-					continue
+				if f, _ := regexp.MatchString(regS, organization); f {
+					continue F
 				}
-				organization2 = o
+			}
+			goto add
+		}
+		if m.ioz != nil {
+			for i := len(m.ioz) - 1; i >= 0; i-- {
+				o := m.ioz[i]
+				regS = fmt.Sprintf(`\b%s\b`, o)
+				if f, _ := regexp.MatchString(regS, organization); f && organization != ""  {
+					organization2 = o
+					goto add
+				}
 			}
 		}
-		if "" == organization2 {
-			continue
-		}
-
+		continue
+	add:
 		m.Blocks = append(m.Blocks, AddressBlock{
 			Oui: []byte(addr),
 			OuiMac: addr,
